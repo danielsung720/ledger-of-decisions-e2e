@@ -1,0 +1,33 @@
+{
+  "name": "ledger-of-decisions-e2e",
+  "version": "1.0.0",
+  "description": "E2E tests for Ledger of Decisions application",
+  "scripts": {
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:report": "playwright show-report",
+    "test:docker": "docker compose run --rm playwright",
+    "test:docker:fresh": "./scripts/run-deterministic-e2e.sh chromium",
+    "test:docker:chromium": "docker compose run --rm playwright sh -c 'npm ci && npx playwright test --project=chromium'",
+    "test:docker:smoke": "./scripts/run-deterministic-e2e.sh smoke",
+    "test:docker:smoke:parallel": "./scripts/run-deterministic-e2e.sh smoke-parallel",
+    "test:docker:deterministic:chromium": "./scripts/run-deterministic-e2e.sh chromium",
+    "test:docker:deterministic:chromium:parallel": "./scripts/run-deterministic-e2e.sh chromium-parallel",
+    "test:docker:domain:auth-navigation": "./scripts/run-deterministic-e2e-domain.sh auth-navigation",
+    "test:docker:domain:expense-review": "./scripts/run-deterministic-e2e-domain.sh expense-review",
+    "test:docker:domain:recurring-cashflow": "./scripts/run-deterministic-e2e-domain.sh recurring-cashflow",
+    "test:docker:firefox": "docker compose run --rm playwright sh -c 'npm ci && npx playwright test --project=firefox'",
+    "test:backend": "docker compose up -d backend && docker compose exec -T backend php artisan test",
+    "test:web": "docker compose run --rm web-test",
+    "test:all": "npm run test:docker:chromium",
+    "docker:up": "docker compose up -d frontend backend",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.58.2",
+    "@types/node": "^20.11.0"
+  }
+}

@@ -1,0 +1,119 @@
+services:
+  # PostgreSQL Database (or SQLite based on your API config)
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ledger
+      POSTGRES_PASSWORD: ledger_password
+      POSTGRES_DB: ledger_of_decisions
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ledger -d ledger_of_decisions"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ledger-network
+
+  # Backend API (PHP/Laravel)
+  # Uses port 8081 externally to avoid conflict with dev environment (8080)
+  backend:
+    build:
+      context: ../ledger-of-decisions-api
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: testing
+      APP_DEBUG: "true"
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ledger_of_decisions
+      DB_USERNAME: ledger
+      DB_PASSWORD: ledger_password
+    volumes:
+      - ../ledger-of-decisions-api:/var/www/html
+    ports:
+      - "8081:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "cd /var/www/html/public && php -S 0.0.0.0:8080 ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/up"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - ledger-network
+
+  # Frontend (Nuxt 3)
+  # Uses port 3001 externally to avoid conflict with dev environment (3000)
+  frontend:
+    build:
+      context: ../ledger-of-decisions-web
+      dockerfile: Dockerfile
+      target: production
+      args:
+        # Build-time: proxy target for SSR requests (Docker internal network)
+        NUXT_API_PROXY_TARGET: http://backend:8080
+    environment:
+      # Runtime: relative path for client-side requests (goes through proxy)
+      NUXT_PUBLIC_API_BASE: /api
+      # Runtime: proxy target for SSR requests
+      NUXT_API_PROXY_TARGET: http://backend:8080
+    ports:
+      - "3001:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ledger-network
+
+  # Playwright Test Runner (E2E tests)
+  playwright:
+    image: mcr.microsoft.com/playwright:v1.58.2-jammy
+    working_dir: /app
+    volumes:
+      - .:/app
+      - playwright_cache:/app/node_modules
+    environment:
+      BASE_URL: http://frontend:3000
+      API_URL: http://backend:8080/api
+      CI: "true"
+    depends_on:
+      frontend:
+        condition: service_healthy
+    command: sh -c "npm ci && npx playwright test"
+    networks:
+      - ledger-network
+
+  # Frontend Unit Test Runner (Vitest)
+  web-test:
+    build:
+      context: ../ledger-of-decisions-web
+      dockerfile: Dockerfile
+      target: development
+    working_dir: /app
+    volumes:
+      - ../ledger-of-decisions-web:/app
+      - web_test_node_modules:/app/node_modules
+    environment:
+      CI: "true"
+    command: sh -c "npm ci && npm test"
+    networks:
+      - ledger-network
+
+networks:
+  ledger-network:
+    driver: bridge
+
+volumes:
+  playwright_cache:
+  web_test_node_modules:
