@@ -12,7 +12,7 @@ fi
 
 case "$DOMAIN" in
   auth-navigation)
-    SPEC_ARGS='tests/auth/login.spec.ts tests/auth/route-protection.spec.ts tests/dashboard.spec.ts tests/navigation.spec.ts tests/responsive.spec.ts'
+    SPEC_ARGS='tests/auth/login.spec.ts tests/auth/route-protection.spec.ts tests/auth/bearer-auth-negative.spec.ts tests/dashboard.spec.ts tests/navigation.spec.ts tests/responsive.spec.ts'
     ;;
   expense-review)
     SPEC_ARGS='tests/expense-crud.spec.ts tests/review.spec.ts'

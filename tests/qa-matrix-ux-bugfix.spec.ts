@@ -1,17 +1,20 @@
 import { test, expect } from '../fixtures/test-fixtures'
+import { loginByApi } from '../helpers/login-by-api'
 
 test.describe('QA Matrix - UX Bugfix Batch', () => {
+  test.beforeEach(async ({ page, apiHelper }) => {
+    await loginByApi(page, apiHelper, {
+      email: process.env.E2E_TEST_EMAIL || 'e2e_core@example.com',
+      password: process.env.E2E_TEST_PASSWORD || 'password',
+    })
+  })
+
   test('TC-01: authenticated user stays logged in after reload on protected routes', async ({ page }) => {
     await page.goto('/')
     await page.waitForLoadState('networkidle')
 
     const authProbe = await page.evaluate(async () => {
-      const token = localStorage.getItem('auth_token')
-      const response = await fetch('/api/user', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
+      const response = await fetch('/api/user', { credentials: 'include' })
 
       return response.status
     })
@@ -49,7 +52,13 @@ test.describe('QA Matrix - UX Bugfix Batch', () => {
   test('TC-03: records/recurring/cashflow reflect new data immediately after save', async ({ page, expenseFormModal }) => {
     // records page - create one expense via global modal and verify row visible
     await page.goto('/records')
-    await page.getByRole('button', { name: '記一筆' }).click()
+    const addExpenseBtn = page.getByRole('button', { name: '記一筆' })
+    const mobileAddExpenseBtn = page.getByTestId('mobile-add-expense-button')
+    if (await addExpenseBtn.isVisible()) {
+      await addExpenseBtn.click()
+    } else {
+      await mobileAddExpenseBtn.click()
+    }
     const recordNote = `qa-record-${Date.now()}`
     await expenseFormModal.fillAmount('456')
     await expenseFormModal.selectCategory('飲食')

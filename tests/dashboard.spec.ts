@@ -1,8 +1,13 @@
 import { test, expect } from '../fixtures/test-fixtures'
+import { loginByApi } from '../helpers/login-by-api'
 
 test.describe('Dashboard Page', () => {
-  test.beforeEach(async ({ dashboardPage }) => {
-    await dashboardPage.goto()
+  test.beforeEach(async ({ page, apiHelper }) => {
+    await loginByApi(page, apiHelper, {
+      email: process.env.E2E_TEST_EMAIL || 'e2e_core@example.com',
+      password: process.env.E2E_TEST_PASSWORD || 'password',
+    })
+    await page.waitForLoadState('networkidle')
   })
 
   test('displays hero section with correct content', async ({ dashboardPage }) => {

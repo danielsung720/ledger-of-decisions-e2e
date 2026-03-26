@@ -5,7 +5,9 @@ import { loginByApi } from '../helpers/login-by-api'
  * Batch Delete Records E2E Tests
  */
 test.describe('Batch Delete Records', () => {
-  test.describe.configure({ mode: 'serial' })
+  // Not using mode: 'serial' — each test has its own beforeEach cleanup+seed so they are
+  // data-independent. Removing serial mode prevents a single flaky test from cascading
+  // into "did not run" for all subsequent tests in the file.
 
   test.beforeEach(async ({ page, apiHelper, expenseListPage }) => {
     await loginByApi(page, apiHelper, {
@@ -18,6 +20,13 @@ test.describe('Batch Delete Records', () => {
     // Navigate to records page
     await expenseListPage.goto()
     await expenseListPage.waitForPageReady()
+    // Explicitly wait for seeded rows to be visible (networkidle fires before Vue renders rows
+    // under Firefox/webkit + parallel load)
+    await expect(expenseListPage.rowCheckboxes.first()).toBeVisible({ timeout: 20000 })
+    // Guard: Nuxt's client-side auth middleware fires after networkidle under load.
+    // If the middleware finds stale state it redirects to /. Asserting the URL here
+    // causes beforeEach to fail fast so the test retries with a fresh navigation.
+    await expect(page).toHaveURL(/\/records/, { timeout: 10000 })
   })
 
   test.afterEach(async ({ apiHelper }) => {
@@ -184,11 +193,15 @@ test.describe('Batch Delete Records', () => {
       await confirmButton.click()
 
       // Wait for success message (indicates deletion complete)
-      await expect(page.getByText('批次刪除成功')).toBeVisible({ timeout: 10000 })
+      await expect(page.getByText('批次刪除成功')).toBeVisible({ timeout: 15000 })
 
-      // Verify records are deleted
-      const newCount = await expenseListPage.getExpenseCount()
-      expect(newCount).toBe(initialCount - 2)
+      // Wait for dialog to fully close (dialog role gone) before counting rows.
+      // webkit keeps dialog in DOM while animating away; the heading/text may already
+      // be empty so checking text content is unreliable.
+      await expect(page.getByRole('dialog')).toBeHidden({ timeout: 10000 })
+
+      // Use toHaveCount() which retries until rows re-render after delete
+      await expect(expenseListPage.rowCheckboxes).toHaveCount(initialCount - 2, { timeout: 10000 })
     })
 
     test('should show success toast after deletion', async ({ expenseListPage, page }) => {
@@ -227,6 +240,9 @@ test.describe('Batch Delete Records', () => {
       const confirmButton = page.getByRole('button', { name: '確認' })
       await expect(confirmButton).toBeEnabled({ timeout: 5000 })
       await confirmButton.click()
+
+      // Wait for dialog to fully close before checking empty state
+      await expect(page.getByRole('dialog')).toBeHidden({ timeout: 10000 })
 
       // Verify empty state is shown
       await expect(expenseListPage.emptyState).toBeVisible({ timeout: 10000 })
@@ -349,10 +365,13 @@ test.describe('Batch Delete Records', () => {
 
       await page.getByRole('button', { name: '確認' }).focus()
       await page.keyboard.press('Enter')
-      await expect(page.getByText('批次刪除成功')).toBeVisible({ timeout: 10000 })
+      await expect(page.getByText('批次刪除成功')).toBeVisible({ timeout: 15000 })
 
-      const newCount = await expenseListPage.getExpenseCount()
-      expect(newCount).toBe(initialCount - 2)
+      // Wait for dialog role to disappear (heading may be empty during animation)
+      await expect(page.getByRole('dialog')).toBeHidden({ timeout: 10000 })
+
+      // toHaveCount retries until rows re-render
+      await expect(expenseListPage.rowCheckboxes).toHaveCount(initialCount - 2, { timeout: 10000 })
     })
   })
 })

@@ -37,8 +37,15 @@ test.describe('Cashflow Item CRUD', () => {
     })
 
     await page.goto('/cashflow')
+    const cashflowTitle = page.getByRole('heading', { name: '每月現金流估算' })
+    const loadedOnFirstTry = await cashflowTitle.isVisible().catch(() => false)
+    if (!loadedOnFirstTry) {
+      await page.goto('/cashflow')
+    }
+
+    await expect(page).toHaveURL(/\/cashflow/)
     await page.waitForLoadState('networkidle')
-    await expect(page.getByRole('heading', { name: '每月現金流估算' })).toBeVisible()
+    await expect(cashflowTitle).toBeVisible({ timeout: 10000 })
   })
 
   test('creates cashflow item and renders it in expense table', async ({ page }) => {

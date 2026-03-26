@@ -89,6 +89,7 @@ test.describe('Recurring Expense API Pages', () => {
   })
 
   test('submits recurring update request without blank optional note', async ({ page, apiHelper }) => {
+    await apiHelper.cleanupRecurringTestData()
     const recurringName = `E2E Edit Recurring ${Date.now()}`
     const created = await apiHelper.createRecurringExpense({
       name: recurringName,

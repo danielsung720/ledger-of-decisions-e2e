@@ -2,7 +2,8 @@ import { test, expect } from '../fixtures/test-fixtures'
 import { loginByApi } from '../helpers/login-by-api'
 
 test.describe('Expense CRUD Operations', () => {
-  test.describe.configure({ mode: 'serial' })
+  // Not using mode: 'serial' — tests are data-independent via per-test loginByApi.
+  // Removing serial mode prevents cascade failures.
 
   test.beforeEach(async ({ page, apiHelper }) => {
     await loginByApi(page, apiHelper, {

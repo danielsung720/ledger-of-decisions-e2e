@@ -2,10 +2,12 @@ import { APIRequestContext } from '@playwright/test'
 
 // Uses 8081 to avoid conflict with dev environment (8080)
 const API_BASE = process.env.API_URL || 'http://localhost:8081/api'
-
-interface AuthToken {
-  token: string
-}
+const API_ORIGIN = new URL(API_BASE).origin
+const FRONTEND_ORIGIN = new URL(process.env.BASE_URL || 'http://localhost:3001').origin
+const CSRF_COOKIE_URL = `${API_ORIGIN}/sanctum/csrf-cookie`
+const XSRF_COOKIE_NAME = 'XSRF-TOKEN'
+const XSRF_HEADER_NAME = 'X-XSRF-TOKEN'
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
 interface User {
   id: number
@@ -18,37 +20,54 @@ interface User {
  */
 export class ApiHelper {
   private request: APIRequestContext
-  private authToken: string | null = null
+  private csrfToken: string | null = null
 
   constructor(request: APIRequestContext) {
     this.request = request
   }
 
   /**
-   * Set auth token for authenticated requests
+   * Keep CSRF cookie/header in sync for session-based auth flow.
    */
-  setAuthToken(token: string) {
-    this.authToken = token
+  private async refreshCsrfTokenFromCookies() {
+    const state = await this.request.storageState()
+    const cookie = state.cookies.find((item) => item.name === XSRF_COOKIE_NAME)
+    this.csrfToken = cookie ? decodeURIComponent(cookie.value) : null
   }
 
-  /**
-   * Clear auth token
-   */
-  clearAuthToken() {
-    this.authToken = null
+  private isUnsafeMethod(method: HttpMethod): boolean {
+    return method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE'
   }
 
-  /**
-   * Get common headers including auth if available
-   */
-  private getHeaders() {
+  private async ensureCsrfToken() {
+    if (this.csrfToken) return
+
+    await this.request.get(CSRF_COOKIE_URL, {
+      headers: {
+        Accept: 'application/json',
+      },
+    })
+    await this.refreshCsrfTokenFromCookies()
+  }
+
+  private async getHeaders(method: HttpMethod) {
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
+      Accept: 'application/json',
+      Origin: FRONTEND_ORIGIN,
+      Referer: `${FRONTEND_ORIGIN}/`,
     }
-    if (this.authToken) {
-      headers['Authorization'] = `Bearer ${this.authToken}`
+
+    if (method !== 'GET') {
+      headers['Content-Type'] = 'application/json'
     }
+
+    if (this.isUnsafeMethod(method)) {
+      await this.ensureCsrfToken()
+      if (this.csrfToken) {
+        headers[XSRF_HEADER_NAME] = this.csrfToken
+      }
+    }
+
     return headers
   }
 
@@ -64,7 +83,7 @@ export class ApiHelper {
     password_confirmation: string
   }) {
     const response = await this.request.post(`${API_BASE}/register`, {
-      headers: this.getHeaders(),
+      headers: await this.getHeaders('POST'),
       data,
     })
 
@@ -80,14 +99,12 @@ export class ApiHelper {
    */
   async verifyEmail(email: string, code: string) {
     const response = await this.request.post(`${API_BASE}/verify-email`, {
-      headers: this.getHeaders(),
+      headers: await this.getHeaders('POST'),
       data: { email, code },
     })
 
     const json = await response.json().catch(() => null)
-    if (json?.data?.token) {
-      this.authToken = json.data.token
-    }
+    await this.refreshCsrfTokenFromCookies()
 
     return {
       ok: response.ok(),
@@ -101,14 +118,12 @@ export class ApiHelper {
    */
   async login(email: string, password: string) {
     const response = await this.request.post(`${API_BASE}/login`, {
-      headers: this.getHeaders(),
+      headers: await this.getHeaders('POST'),
       data: { email, password },
     })
 
     const json = await response.json().catch(() => null)
-    if (json?.data?.token) {
-      this.authToken = json.data.token
-    }
+    await this.refreshCsrfTokenFromCookies()
 
     return {
       ok: response.ok(),
@@ -122,10 +137,10 @@ export class ApiHelper {
    */
   async logout() {
     const response = await this.request.post(`${API_BASE}/logout`, {
-      headers: this.getHeaders(),
+      headers: await this.getHeaders('POST'),
     })
 
-    this.authToken = null
+    this.csrfToken = null
 
     return {
       ok: response.ok(),
@@ -138,7 +153,7 @@ export class ApiHelper {
    */
   async getCurrentUser() {
     const response = await this.request.get(`${API_BASE}/user`, {
-      headers: this.getHeaders(),
+      headers: await this.getHeaders('GET'),
     })
 
     return {
@@ -153,7 +168,7 @@ export class ApiHelper {
    */
   async resendVerification(email: string) {
     const response = await this.request.post(`${API_BASE}/resend-verification`, {
-      headers: this.getHeaders(),
+      headers: await this.getHeaders('POST'),
       data: { email },
     })
 
@@ -169,7 +184,7 @@ export class ApiHelper {
    */
   async forgotPassword(email: string) {
     const response = await this.request.post(`${API_BASE}/forgot-password`, {
-      headers: this.getHeaders(),
+      headers: await this.getHeaders('POST'),
       data: { email },
     })
 
@@ -190,7 +205,7 @@ export class ApiHelper {
     password_confirmation: string
   }) {
     const response = await this.request.post(`${API_BASE}/reset-password`, {
-      headers: this.getHeaders(),
+      headers: await this.getHeaders('POST'),
       data,
     })
 
@@ -209,7 +224,7 @@ export class ApiHelper {
     name: string
     email: string
     password: string
-  }): Promise<{ user: User; token: string } | null> {
+  }): Promise<{ user: User } | null> {
     // Register
     const registerResult = await this.register({
       ...data,
@@ -253,7 +268,7 @@ export class ApiHelper {
     }
 
     const response = await this.request.post(`${API_BASE}/expenses`, {
-      headers: this.getHeaders(),
+      headers: await this.getHeaders('POST'),
       data: payload,
     })
 
@@ -270,7 +285,7 @@ export class ApiHelper {
    */
   async deleteExpense(id: number) {
     const response = await this.request.delete(`${API_BASE}/expenses/${id}`, {
-      headers: this.getHeaders(),
+      headers: await this.getHeaders('DELETE'),
     })
     if (!response.ok()) {
       console.warn(`Failed to delete expense ${id}: ${response.status()}`)
@@ -282,7 +297,7 @@ export class ApiHelper {
    */
   async getExpenses() {
     const response = await this.request.get(`${API_BASE}/expenses`, {
-      headers: this.getHeaders(),
+      headers: await this.getHeaders('GET'),
     })
     return response.json()
   }
@@ -300,6 +315,40 @@ export class ApiHelper {
   }
 
   /**
+   * Get all recurring expenses via API
+   */
+  async getRecurringExpenses() {
+    const response = await this.request.get(`${API_BASE}/recurring-expenses`, {
+      headers: await this.getHeaders('GET'),
+    })
+    return response.json()
+  }
+
+  /**
+   * Delete a recurring expense via API
+   */
+  async deleteRecurringExpense(id: number) {
+    const response = await this.request.delete(`${API_BASE}/recurring-expenses/${id}`, {
+      headers: await this.getHeaders('DELETE'),
+    })
+    if (!response.ok()) {
+      console.warn(`Failed to delete recurring expense ${id}: ${response.status()}`)
+    }
+  }
+
+  /**
+   * Clean up all recurring test data
+   */
+  async cleanupRecurringTestData() {
+    const recurring = await this.getRecurringExpenses()
+    if (recurring.data) {
+      for (const item of recurring.data) {
+        await this.deleteRecurringExpense(item.id)
+      }
+    }
+  }
+
+  /**
    * Create recurring expense via API
    */
   async createRecurringExpense(data: {
@@ -310,7 +359,7 @@ export class ApiHelper {
     start_date: string
   }) {
     const response = await this.request.post(`${API_BASE}/recurring-expenses`, {
-      headers: this.getHeaders(),
+      headers: await this.getHeaders('POST'),
       data: {
         ...data,
         currency: 'TWD',
@@ -347,7 +396,7 @@ export class ApiHelper {
    */
   async batchDeleteExpenses(ids: number[]) {
     const response = await this.request.delete(`${API_BASE}/expenses/batch`, {
-      headers: this.getHeaders(),
+      headers: await this.getHeaders('DELETE'),
       data: { ids },
     })
     return response.json()

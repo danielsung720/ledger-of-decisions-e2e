@@ -25,12 +25,18 @@ services:
     environment:
       APP_ENV: testing
       APP_DEBUG: "true"
+      APP_URL: http://backend:8080
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432
       DB_DATABASE: ledger_of_decisions
       DB_USERNAME: ledger
       DB_PASSWORD: ledger_password
+      SESSION_SECURE_COOKIE: "false"
+      SESSION_SAME_SITE: lax
+      SANCTUM_STATEFUL_DOMAINS: frontend:3000,localhost:3001,127.0.0.1:3001,localhost:3000,127.0.0.1:3000
+      CORS_ALLOWED_ORIGINS: http://frontend:3000,http://localhost:3001,http://127.0.0.1:3001
+      PHP_CLI_SERVER_WORKERS: "16"
     volumes:
       - ../ledger-of-decisions-api:/var/www/html
     ports:
@@ -38,7 +44,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: sh -c "cd /var/www/html/public && php -S 0.0.0.0:8080 ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php"
+    command: sh -c "cd /var/www/html && php artisan migrate:fresh --force --seed && cd /var/www/html/public && php -S 0.0.0.0:8080 ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/up"]
       interval: 10s
@@ -85,7 +91,7 @@ services:
       - playwright_cache:/app/node_modules
     environment:
       BASE_URL: http://frontend:3000
-      API_URL: http://backend:8080/api
+      API_URL: http://frontend:3000/api
       CI: "true"
     depends_on:
       frontend:

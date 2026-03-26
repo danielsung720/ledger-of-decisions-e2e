@@ -1,7 +1,31 @@
 import { test, expect } from '../../fixtures/test-fixtures'
+import type { Page } from '@playwright/test'
 
 const emptyStorageState = { cookies: [], origins: [] }
 test.use({ storageState: emptyStorageState })
+
+async function goToResetPasswordFromForgotFlow(page: Page, email: string = 'test@example.com') {
+  await page.route('**/api/forgot-password', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        message: 'Code sent',
+      }),
+    })
+  })
+
+  await page.goto('/forgot-password')
+  await page.getByPlaceholder('請輸入您的 Email').fill(email)
+  await page.getByRole('button', { name: '發送驗證碼' }).click()
+  await expect(page.getByRole('heading', { name: '驗證碼已發送' })).toBeVisible()
+  await page.getByRole('button', { name: '輸入驗證碼' }).click()
+  await expect(page).toHaveURL('/reset-password')
+
+  await page.unroute('**/api/forgot-password')
+  return email
+}
 
 test.describe('Reset Password Flow', () => {
   test.describe('Page Access', () => {
@@ -19,23 +43,14 @@ test.describe('Reset Password Flow', () => {
       await expect(page).toHaveURL('/forgot-password')
     })
 
-    test('stays on reset-password page when pending email exists in localStorage', async ({ page }) => {
-      await page.goto('/login')
-      await page.evaluate(() => {
-        localStorage.setItem('pending_verification_email', 'test@example.com')
-      })
-
-      await page.goto('/reset-password')
-
+    test('stays on reset-password page when pending email exists in flow', async ({ page }) => {
+      await goToResetPasswordFromForgotFlow(page)
       await expect(page).toHaveURL('/reset-password')
       await expect(page.getByRole('heading', { name: '輸入驗證碼' })).toBeVisible()
     })
 
     test('submits reset-password payload with pending email, otp code and new password', async ({ page }) => {
-      await page.goto('/login')
-      await page.evaluate(() => {
-        localStorage.setItem('pending_verification_email', 'test@example.com')
-      })
+      const email = await goToResetPasswordFromForgotFlow(page, 'reset_payload@example.com')
 
       const resetPayloadPromise = page.waitForRequest((request) => {
         return request.method() === 'POST' && request.url().includes('/api/reset-password')
@@ -52,7 +67,6 @@ test.describe('Reset Password Flow', () => {
         })
       })
 
-      await page.goto('/reset-password')
       const otpInputs = page.locator('input[type="text"][maxlength="1"]')
       await otpInputs.nth(0).fill('1')
       await otpInputs.nth(1).fill('2')
@@ -72,7 +86,7 @@ test.describe('Reset Password Flow', () => {
         password: string
         password_confirmation: string
       }
-      expect(payload.email).toBe('test@example.com')
+      expect(payload.email).toBe(email)
       expect(payload.code).toBe('123456')
       expect(payload.password).toBe('newpassword123')
       expect(payload.password_confirmation).toBe('newpassword123')

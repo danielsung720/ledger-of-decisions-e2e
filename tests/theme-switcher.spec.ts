@@ -1,5 +1,6 @@
 import { test, expect } from '../fixtures/test-fixtures'
 import type { Page } from '@playwright/test'
+import { loginByApi } from '../helpers/login-by-api'
 
 const themeCard = (page: Page, id: 'default' | 'code' | 'ocean') =>
   page.locator('[data-testid="settings-page"]:visible').last()
@@ -8,27 +9,49 @@ const selectedThemeCard = (page: Page) =>
   page.locator('[data-testid="settings-page"]:visible').last()
     .locator('[data-testid^="theme-card-"][aria-checked="true"]')
 
+async function gotoSettings(page: Page) {
+  const settingsPage = page.getByTestId('settings-page')
+
+  await page.goto('/settings')
+  const loadedOnFirstTry = await settingsPage.isVisible().catch(() => false)
+  if (!loadedOnFirstTry) {
+    await page.goto('/settings')
+  }
+
+  await expect(page).toHaveURL(/\/settings/)
+  await expect(settingsPage).toBeVisible({ timeout: 10000 })
+}
+
 test.describe('Theme Switcher', () => {
+  test.beforeEach(async ({ page, apiHelper }) => {
+    await loginByApi(page, apiHelper, {
+      email: process.env.E2E_TEST_EMAIL || 'e2e_core@example.com',
+      password: process.env.E2E_TEST_PASSWORD || 'password',
+    })
+  })
+
   test.describe('Settings Entry', () => {
     test('navigates to settings from user menu', async ({ page }) => {
       await page.goto('/')
 
-      // Open user menu
-      const userMenuButton = page.getByTestId('user-menu-button')
-      await userMenuButton.click()
+      const isMobile = (page.viewportSize()?.width ?? 1280) < 768
 
-      // Click settings option
-      const settingsLink = page.getByTestId('user-menu-settings')
-      await expect(settingsLink).toBeVisible()
-      await settingsLink.click()
-
-      // Verify navigation
-      await expect(page).toHaveURL('/settings')
-      await expect(page.getByTestId('settings-page')).toBeVisible()
+      if (isMobile) {
+        // On mobile the user menu is hidden (md:block) — navigate directly
+        await gotoSettings(page)
+      } else {
+        // Desktop: open user menu and click settings link
+        await page.getByTestId('user-menu-button').click()
+        const settingsLink = page.getByTestId('user-menu-settings')
+        await expect(settingsLink).toBeVisible()
+        await settingsLink.click()
+        await expect(page).toHaveURL('/settings')
+        await expect(page.getByTestId('settings-page')).toBeVisible({ timeout: 10000 })
+      }
     })
 
     test('settings page shows theme section', async ({ page }) => {
-      await page.goto('/settings')
+      await gotoSettings(page)
 
       // Verify theme section exists
       const themeSection = page.getByTestId('theme-section')
@@ -41,7 +64,7 @@ test.describe('Theme Switcher', () => {
 
   test.describe('Theme Cards', () => {
     test('displays all three theme cards', async ({ page }) => {
-      await page.goto('/settings')
+      await gotoSettings(page)
 
       // Verify all theme cards are visible
       await expect(themeCard(page, 'default')).toBeVisible()
@@ -50,7 +73,7 @@ test.describe('Theme Switcher', () => {
     })
 
     test('each theme card shows name and description', async ({ page }) => {
-      await page.goto('/settings')
+      await gotoSettings(page)
 
       // Default theme
       const defaultCard = themeCard(page, 'default')
@@ -69,7 +92,7 @@ test.describe('Theme Switcher', () => {
     })
 
     test('each theme card has preview area', async ({ page }) => {
-      await page.goto('/settings')
+      await gotoSettings(page)
 
       await expect(page.getByTestId('theme-preview-default')).toBeVisible()
       await expect(page.getByTestId('theme-preview-code')).toBeVisible()
@@ -79,7 +102,7 @@ test.describe('Theme Switcher', () => {
 
   test.describe('Theme Selection', () => {
     test('current theme is selected initially', async ({ page }) => {
-      await page.goto('/settings')
+      await gotoSettings(page)
 
       const html = page.locator('html')
       const currentTheme = await html.getAttribute('data-theme')
@@ -88,7 +111,7 @@ test.describe('Theme Switcher', () => {
     })
 
     test('clicking code theme switches to code theme', async ({ page }) => {
-      await page.goto('/settings')
+      await gotoSettings(page)
 
       const codeCard = themeCard(page, 'code')
       await codeCard.click()
@@ -102,7 +125,7 @@ test.describe('Theme Switcher', () => {
     })
 
     test('clicking ocean theme switches to ocean theme', async ({ page }) => {
-      await page.goto('/settings')
+      await gotoSettings(page)
 
       const oceanCard = themeCard(page, 'ocean')
       await oceanCard.click()
@@ -116,7 +139,7 @@ test.describe('Theme Switcher', () => {
     })
 
     test('only one theme is selected at a time', async ({ page }) => {
-      await page.goto('/settings')
+      await gotoSettings(page)
 
       // Select code theme
       await themeCard(page, 'code').click()
@@ -136,7 +159,7 @@ test.describe('Theme Switcher', () => {
 
   test.describe('Theme Persistence', () => {
     test('selected theme persists after page reload', async ({ page }) => {
-      await page.goto('/settings')
+      await gotoSettings(page)
 
       // Select ocean theme
       await themeCard(page, 'ocean').click()
@@ -151,7 +174,7 @@ test.describe('Theme Switcher', () => {
     })
 
     test('selected theme applies across different pages', async ({ page }) => {
-      await page.goto('/settings')
+      await gotoSettings(page)
 
       // Select code theme
       await themeCard(page, 'code').click()
@@ -166,7 +189,7 @@ test.describe('Theme Switcher', () => {
       await expect(page.locator('html')).toHaveAttribute('data-theme', 'code')
 
       // Navigate back to settings
-      await page.goto('/settings')
+      await gotoSettings(page)
       await expect(page.locator('html')).toHaveAttribute('data-theme', 'code')
       await expect(selectedThemeCard(page)).toHaveCount(1)
     })
@@ -174,7 +197,7 @@ test.describe('Theme Switcher', () => {
 
   test.describe('Keyboard Accessibility', () => {
     test('theme cards are focusable with Tab', async ({ page }) => {
-      await page.goto('/settings')
+      await gotoSettings(page)
 
       // Focus on first theme card using Tab
       await page.keyboard.press('Tab')
@@ -194,7 +217,7 @@ test.describe('Theme Switcher', () => {
     })
 
     test('Enter key selects focused theme card', async ({ page }) => {
-      await page.goto('/settings')
+      await gotoSettings(page)
 
       // Focus on code theme card
       const codeCard = themeCard(page, 'code')
@@ -209,7 +232,10 @@ test.describe('Theme Switcher', () => {
     })
 
     test('Space key selects focused theme card', async ({ page }) => {
-      await page.goto('/settings')
+      await gotoSettings(page)
+
+      // Wait for ClientOnly to hydrate and theme cards to render
+      await expect(themeCard(page, 'default')).toBeVisible()
 
       // Focus on ocean theme card
       const oceanCard = themeCard(page, 'ocean')
@@ -224,10 +250,11 @@ test.describe('Theme Switcher', () => {
     })
 
     test('focus ring is visible on focused theme card', async ({ page }) => {
-      await page.goto('/settings')
+      await gotoSettings(page)
 
       // Focus on a theme card
       const codeCard = themeCard(page, 'code')
+      await expect(codeCard).toBeVisible()
       await codeCard.focus()
 
       // Check that focus is visible (card should have focus-visible styles)
@@ -237,7 +264,7 @@ test.describe('Theme Switcher', () => {
 
   test.describe('Theme Visual Effects', () => {
     test('code theme applies dark background', async ({ page }) => {
-      await page.goto('/settings')
+      await gotoSettings(page)
 
       // Select code theme
       await themeCard(page, 'code').click()
@@ -252,7 +279,7 @@ test.describe('Theme Switcher', () => {
     })
 
     test('ocean theme applies light blue background', async ({ page }) => {
-      await page.goto('/settings')
+      await gotoSettings(page)
 
       // Select ocean theme
       await themeCard(page, 'ocean').click()
@@ -282,7 +309,7 @@ test.describe('Theme Switcher', () => {
     })
 
     test('settings page has back to home link', async ({ page }) => {
-      await page.goto('/settings')
+      await gotoSettings(page)
 
       const homeLink = page.getByRole('link', { name: '返回首頁' })
       await expect(homeLink).toBeVisible()

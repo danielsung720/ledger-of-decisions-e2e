@@ -19,11 +19,7 @@ test.describe('Route Protection', () => {
 
     for (const route of protectedRoutes) {
       test(`redirects ${route.name} page to login when not authenticated`, async ({ page }) => {
-        // Ensure no auth token
-        await page.goto('/login')
-        await page.evaluate(() => {
-          localStorage.removeItem('auth_token')
-        })
+        await page.context().clearCookies()
 
         // Try to access protected route
         await page.goto(route.path)
@@ -37,12 +33,8 @@ test.describe('Route Protection', () => {
 
   test.describe('Public Routes', () => {
     test('allows access to login page without authentication', async ({ page }) => {
-      // Must visit a page first to access localStorage for that origin
+      await page.context().clearCookies()
       await page.goto('/login')
-      await page.evaluate(() => {
-        localStorage.removeItem('auth_token')
-      })
-      await page.reload()
       await page.waitForLoadState('networkidle')
 
       // Should stay on login page
@@ -51,11 +43,7 @@ test.describe('Route Protection', () => {
     })
 
     test('allows access to register page without authentication', async ({ page }) => {
-      // Must visit a page first to access localStorage for that origin
-      await page.goto('/login')
-      await page.evaluate(() => {
-        localStorage.removeItem('auth_token')
-      })
+      await page.context().clearCookies()
 
       await page.goto('/register')
       await page.waitForLoadState('networkidle')
@@ -66,11 +54,7 @@ test.describe('Route Protection', () => {
     })
 
     test('allows access to forgot-password page without authentication', async ({ page }) => {
-      // Must visit a page first to access localStorage for that origin
-      await page.goto('/login')
-      await page.evaluate(() => {
-        localStorage.removeItem('auth_token')
-      })
+      await page.context().clearCookies()
 
       await page.goto('/forgot-password')
       await page.waitForLoadState('networkidle')

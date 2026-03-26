@@ -25,23 +25,39 @@ test.describe('Logout Flow', () => {
       })
     })
 
-    await page.locator('button.rounded-full').first().click()
-    await page.getByRole('button', { name: '登出' }).click()
+    // Use evaluate to dispatch click with proper event.target.
+    // force-click dispatches at (0,0) which triggers handleClickOutside and closes the menu.
+    // evaluate-based dispatch sets the correct event.target so handleClickOutside skips closing.
+    await page.evaluate(() => {
+      const btn = document.querySelector('[data-testid="user-menu-button"]') as HTMLElement
+      btn?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    })
+    // Wait for Vue to render the dropdown (v-if="isOpen" → button appears in DOM)
+    await page.waitForFunction(
+      () => Array.from(document.querySelectorAll('button')).some((b) => b.textContent?.trim() === '登出'),
+      { timeout: 5000 }
+    )
+    await page.evaluate(() => {
+      const btn = Array.from(document.querySelectorAll('button')).find(
+        (b) => b.textContent?.trim() === '登出'
+      ) as HTMLElement
+      btn?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    })
 
     await page.waitForURL('/login', { timeout: 10000 })
     await expect(page).toHaveURL('/login')
-    const storedToken = await page.evaluate(() => localStorage.getItem('auth_token'))
-    expect(storedToken).toBe(null)
+    const authProbe = await page.request.get('/api/user', {
+      headers: {
+        Accept: 'application/json',
+      },
+    })
+    expect(authProbe.status()).toBe(401)
     await page.unroute('**/api/logout')
   })
 
   test.describe('Unauthenticated Header', () => {
     test('displays login and register buttons when not logged in', async ({ page }) => {
-      // Clear any auth token
-      await page.goto('/login')
-      await page.evaluate(() => {
-        localStorage.removeItem('auth_token')
-      })
+      await page.context().clearCookies()
 
       await page.goto('/login')
 

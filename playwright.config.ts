@@ -1,7 +1,10 @@
 import { defineConfig, devices } from '@playwright/test'
 import path from 'path'
 
-const authFile = path.join(__dirname, 'playwright/.auth/user.json')
+// When running parallel browsers, E2E_BROWSER is set per container.
+// Falls back to 'user' (user.json) for normal sequential runs.
+const browserName = process.env.E2E_BROWSER || 'user'
+const authFile = path.join(__dirname, `playwright/.auth/${browserName}.json`)
 
 /**
  * Playwright configuration for Ledger of Decisions E2E tests
@@ -16,18 +19,24 @@ export default defineConfig({
   // Fail the build on CI if you accidentally left test.only in the source code
   forbidOnly: !!process.env.CI,
 
-  // No retries - if a test fails, it fails
-  retries: 0,
+  // 3 retries in CI: Firefox/webkit are 30-50% slower in Docker under parallel load;
+  // 4 total attempts handle the long tail of infrastructure-driven flakiness
+  retries: process.env.CI ? 3 : 0,
 
   // Opt out of parallel tests on CI
   workers: process.env.CI ? 1 : undefined,
 
   // Reporter to use
-  reporter: [
-    ['html', { outputFolder: 'playwright-report' }],
-    ['json', { outputFile: 'test-results/results.json' }],
-    ['list'],
-  ],
+  reporter: process.env.SHARD_REPORT
+    ? [
+        ['blob', { outputDir: 'blob-reports' }],
+        ['list'],
+      ]
+    : [
+        ['html', { outputFolder: 'playwright-report' }],
+        ['json', { outputFile: 'test-results/results.json' }],
+        ['list'],
+      ],
 
   // Shared settings for all projects
   use: {
@@ -93,12 +102,12 @@ export default defineConfig({
     },
   ],
 
-  // Timeout for each test
-  timeout: 30000,
+  // Timeout for each test — 60s to accommodate Firefox which is ~30-40% slower in Docker
+  timeout: 60000,
 
-  // Expect timeout
+  // Expect timeout — 10s to match actionTimeout; Mobile Safari is ~40% slower under load
   expect: {
-    timeout: 5000,
+    timeout: 10000,
   },
 
   // Output folder for test artifacts

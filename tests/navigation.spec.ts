@@ -1,6 +1,14 @@
 import { test, expect } from '../fixtures/test-fixtures'
+import { loginByApi } from '../helpers/login-by-api'
 
 test.describe('Navigation', () => {
+  test.beforeEach(async ({ page, apiHelper }) => {
+    await loginByApi(page, apiHelper, {
+      email: process.env.E2E_TEST_EMAIL || 'e2e_core@example.com',
+      password: process.env.E2E_TEST_PASSWORD || 'password',
+    })
+  })
+
   test('navigates to dashboard from root', async ({ page }) => {
     await page.goto('/')
     await expect(page).toHaveURL('/')
@@ -10,9 +18,14 @@ test.describe('Navigation', () => {
   test('navigates to expense list', async ({ page }) => {
     await page.goto('/')
 
-    // Find and click navigation link to expenses
-    const expenseLink = page.getByTestId('nav-link-records')
-    await expenseLink.click()
+    // Find and click navigation link to expenses (desktop or mobile nav)
+    const desktopLink = page.getByTestId('nav-link-records')
+    const mobileLink = page.getByTestId('mobile-nav-link-records')
+    if (await desktopLink.isVisible()) {
+      await desktopLink.click()
+    } else {
+      await mobileLink.click()
+    }
     await expect(page).toHaveURL(/\/records/)
   })
 

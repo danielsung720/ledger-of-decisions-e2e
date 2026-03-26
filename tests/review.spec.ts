@@ -1,8 +1,20 @@
 import { test, expect } from '../fixtures/test-fixtures'
+import { loginByApi } from '../helpers/login-by-api'
 
 test.describe('Review Page', () => {
-  test.beforeEach(async ({ reviewPage }) => {
+  test.beforeEach(async ({ reviewPage, page, apiHelper }) => {
+    await loginByApi(page, apiHelper, {
+      email: process.env.E2E_TEST_EMAIL || 'e2e_core@example.com',
+      password: process.env.E2E_TEST_PASSWORD || 'password',
+    })
     await reviewPage.goto()
+    const loadedOnFirstTry = await reviewPage.pageTitle.isVisible().catch(() => false)
+    if (!loadedOnFirstTry) {
+      await reviewPage.goto()
+    }
+
+    await expect(page).toHaveURL(/\/review/)
+    await expect(reviewPage.pageTitle).toBeVisible()
   })
 
   test('displays page title', async ({ reviewPage }) => {
