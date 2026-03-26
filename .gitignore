@@ -4,6 +4,7 @@ node_modules/
 # Test results
 test-results/
 playwright-report/
+blob-reports/
 playwright/.cache/
 playwright/.auth/
 
